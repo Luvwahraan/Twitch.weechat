@@ -6,15 +6,19 @@ SCRIPT_NAME    = "twitch_oauth"
 SCRIPT_AUTHOR  = "Luvwahraan"
 SCRIPT_VERSION = "1.0"
 SCRIPT_LICENSE = "Whatever"
-SCRIPT_DESC    = "Automatiquement OAuth Twitch update"
+SCRIPT_DESC    = "OAuth Twitch auto update"
 
 REFRESH_TOKEN = ''
 IRC_SERVER = 'twitch'
 EXPIRE_TIME = ''
 
+cfg_refresh_token = "plugins.var.python.twitch_oauth.refresh_token"
+cfg_irc_server =    "plugins.var.python.twitch_oauth.irc_server"
+cfg_expire_time =   "plugins.var.python.twitch_oauth.expire_time"
+
 
 def refresh_oauth_cb(data, remaining_calls):
-    REFRESH_TOKEN = weechat.config_string( weechat.config_get(f"plugins.var.python.{SCRIPT_NAME}.refresh_token") )
+    REFRESH_TOKEN = weechat.config_string( weechat.config_get(cfg_refresh_token) )
     url = f"https://twitchtokengenerator.com/api/refresh/{REFRESH_TOKEN}"
 
     try:
@@ -23,36 +27,37 @@ def refresh_oauth_cb(data, remaining_calls):
             data = response.json()
             new_token = data['token']
 
-            # Met à jour WeeChat
-            weechat.command("", f"/set irc.server.{IRC_SERVER}.password oauth:{new_token}")
-            weechat.command("", f"/save")
+            irc_server = weechat.config_string(  weechat.config_get(cfg_irc_server) )
+            weechat.command("", f"/set irc.server.{irc_server}.password oauth:{new_token}")
+            weechat.command("", f"/save irc")
             #weechat.command("", f"/reconnect {IRC_SERVER}")
-            weechat.prnt("", f"[{SCRIPT_NAME}] Token Twitch mis à jour.")
 
-            # Planifie le prochain renouvellement quelques heures avant expiration
-            return int((EXPIRE_TIME - 9000) * 1000)  # 9000s = 2h30 avant expiration
+            # Next token update
+            expire_time = weechat.config_integer( weechat.config_get(cfg_expire_time) )
+            next_timer = int((expire_time - 9000) * 1000)  # 9000s = 2h30
+            weechat.hook_timer(next_timer, 0, 1, "refresh_oauth_cb", "")
+
+            return weechat.WEECHAT_RC_OK
         else:
-            weechat.prnt("", f"[{SCRIPT_NAME}] Erreur HTTP lors du renouvellement: {response.status_code}")
-            return 60000  # Réessaie dans 60s
+            raise Exception(f"Erreur HTTP lors du renouvellement: {response.status_code}")
     except Exception as e:
-        weechat.prnt("", f"[{SCRIPT_NAME}] Exception lors du renouvellement: {e}")
-        return 60000  # retries 60s after
-
-
-
-def config_cb(data, option, value):
-    REFRESH_TOKEN = weechat.config_string(  weechat.config_get(f"plugins.var.python.{SCRIPT_NAME}.refresh_token") )
-    IRC_SERVER =    weechat.config_string(  weechat.config_get(f"plugins.var.python.{SCRIPT_NAME}.irc_server") )
-    EXPIRE_TIME =   weechat.config_integer( weechat.config_get(f"plugins.var.python.{SCRIPT_NAME}.expire_time") )
-    return weechat.WEECHAT_RC_OK
+        weechat.prnt("", f"[{SCRIPT_NAME}] {e}")
+        weechat.hook_timer(60000, 0, 1, "refresh_oauth_cb", "") # retries after 60s
+        return weechat.WEECHAT_RC_OK
 
 
 if weechat.register(SCRIPT_NAME, SCRIPT_AUTHOR, SCRIPT_VERSION, 
-                    SCRIPT_LICENSE, SCRIPT_DESC, "", ""):    
-    REFRESH_TOKEN = weechat.config_string(  weechat.config_get(f"plugins.var.python.{SCRIPT_NAME}.refresh_token") )
-    IRC_SERVER =    weechat.config_string(  weechat.config_get(f"plugins.var.python.{SCRIPT_NAME}.irc_server") )
-    EXPIRE_TIME =   weechat.config_integer( weechat.config_get(f"plugins.var.python.{SCRIPT_NAME}.expire_time") )
+                    SCRIPT_LICENSE, SCRIPT_DESC, "", ""):
+
+    # check script config
+    script_options = {
+        cfg_refresh_token:  "please set refresh token",
+        cfg_irc_server:     "twitch",
+        cfg_expire_time:    "5184000",
+    }
+    for option, default_value in script_options.items():
+        if not weechat.config_is_set_plugin(option):
+            weechat.config_set_plugin(option, default_value)
 
     weechat.hook_timer(5000, 0, 1, "refresh_oauth_cb", "")
-    weechat.hook_config("plugins.var.python." + SCRIPT_NAME + ".*", "config_cb", "")
 
