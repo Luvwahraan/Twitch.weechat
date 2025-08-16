@@ -60,16 +60,16 @@ def addserver_command_cb(data, buffer, args):
         # unknown twitch server and oauth: adding
 
         irc_servers_str = weechat.config_get_plugin('irc_servers')
-        weechat.prnt('', f"[{SCRIPT_NAME}] Servers: {irc_servers_str} {weechat.config_get_plugin('irc_servers')}")
-
+        
+        # Comma separated list
         if irc_servers_str == '':
             weechat.config_set_plugin( 'irc_servers', irc_server )
         else:
             weechat.config_set_plugin( 'irc_servers', f"{irc_servers_str},{irc_server}" )
 
         weechat.config_set_plugin( cfg_token, refresh_token )
-        
         weechat.prnt('', f"[{SCRIPT_NAME}] New refresh token for '{irc_server}'.")
+        weechat.command("", "/save plugins")
     else:
         # no add
         weechat.prnt('', f"[{SCRIPT_NAME}] Refresh token already exists for '{irc_server}'.")
@@ -79,9 +79,9 @@ def addserver_command_cb(data, buffer, args):
 def refresh_oauth_cb(data, remaining_calls):
     servers_str = weechat.config_get_plugin('irc_servers')
     for irc_server in servers_str.split(','):
-        if not irc_server: break
-        weechat.prnt('', f"[{SCRIPT_NAME}] Refreshing server {irc_server}")
-        update_request(irc_server)
+        # Don't try to with an update empty server string.
+        if irc_server:
+            update_request(irc_server)
     return weechat.WEECHAT_RC_OK
 
 
